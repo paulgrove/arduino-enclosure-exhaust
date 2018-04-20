@@ -1,6 +1,13 @@
 // include the library code:
 #include <LiquidCrystal.h>
 #include <Servo.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+#define ONE_WIRE_BUS 10
+
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
 
 // initialize the library by associating any needed LCD interface pin
 // with the arduino pin number it is connected to
@@ -10,6 +17,9 @@ LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 #define ENC_SW A2
 #define ENC_B A0
 #define ENC_A A1
+#define ENC_CLOCKWISE 1
+#define ENC_ANTI_CLOCKWISE 2
+#define ENC_BUTTON 3
 int pinALast;
 int returnLast;
 int aVal;
@@ -27,6 +37,14 @@ void setupEncoder() {
 int readEncoder() {
   boolean bCW;
   int returnVal = 0;
+  int swVal = digitalRead(ENC_SW);
+  if (swVal == LOW) {
+    unsigned long thisActivation = millis();
+    if(thisActivation - lastActivation > 1000) {
+      lastActivation = thisActivation;
+      return ENC_BUTTON;
+    }
+  }
   aVal = digitalRead(ENC_A);
   if (aVal != pinALast) {
     unsigned long thisActivation = millis();
@@ -72,30 +90,104 @@ void setup() {
   // set up the LCD's number of columns and rows:
   lcd.begin(16, 2);
   // Print a message to the LCD.
-  lcd.print("hello, world!");
+  //lcd.print("hello, world!");
+
+  // Setup Temp
+  sensors.begin();
 }
 
 int fanSpeed = 0;
 int lastFanSpeed = -1;
+int servoPos = 0;
+int lastServoPos = -1;
+int backlightPercent = 100;
+int lastBacklightPercent = -1;
+int mode = 0;
+int lastMode = -1;
+float temp = 0;
+float lastTemp = -1;
+unsigned long lastSensorPollTime = -1000;
+
+void drawScreen() {
+  if(mode != lastMode) {
+    lastMode = mode;
+    lcd.clear();
+    if(mode == 0) {
+      lcd.print("Set FAN");
+    }
+    else if(mode == 1) {
+      lcd.print("Set Servo");
+    }
+    else if(mode == 2) {
+      lcd.print("Set Backlight");
+    }
+  }
+  lcd.setCursor(0, 1);
+  if(mode == 0) {
+    lcd.print(fanSpeed);
+  }
+  else if(mode == 1) {
+    lcd.print(servoPos);
+  }
+  else if(mode == 2) {
+    lcd.print(backlightPercent);
+  }
+  lcd.print("  ");
+  //if(lastTemp != temp) {
+    lastTemp = temp;
+    lcd.setCursor(6, 1);
+    lcd.print(temp);
+  //}
+}
+
+void updateTemps() {
+  unsigned long now = millis();
+  if (now - lastSensorPollTime >= 5000) {
+    lastSensorPollTime = now;
+    sensors.requestTemperatures();
+    temp = sensors.getTempCByIndex(0);
+  }
+}
+
 void loop() {
   // put your main code here, to run repeatedly:
-  OCR2B = map(fanSpeed, 0, 100, 0, 79);
   int rotaryEncoderRes = readEncoder();
-  if(rotaryEncoderRes == 1)
-    fanSpeed++;
-  if(rotaryEncoderRes == 2)
-    fanSpeed--;
-  if(fanSpeed != lastFanSpeed) {
-    lastFanSpeed = fanSpeed;
-    lcd.setCursor(0, 1);
-    lcd.print(fanSpeed);
-    OCR2B = map(fanSpeed, 0, 180, 0, 79);
-    servo.write(fanSpeed);
+  if(rotaryEncoderRes == ENC_CLOCKWISE) {
+    if(mode == 0)
+      fanSpeed++;
+    if(mode == 1)
+      servoPos++;
   }
+  if(rotaryEncoderRes == ENC_ANTI_CLOCKWISE) {
+    if(mode == 0)
+      fanSpeed--;
+    if(mode == 1)
+      servoPos--;
+  }
+  if(rotaryEncoderRes == ENC_BUTTON) {
+    mode++;
+    if(mode > 2)
+      mode = 0;
+  }
+  if(fanSpeed != lastFanSpeed) {
+    if(fanSpeed > 100)
+      fanSpeed = 0;
+    if(fanSpeed < 0)
+      fanSpeed = 100;
+    lastFanSpeed = fanSpeed;
+    OCR2B = map(fanSpeed, 0, 100, 0, 79);
+
+  }
+  if(servoPos != lastServoPos) {
+    if(servoPos > 180)
+      servoPos = 0;
+    if(servoPos < 0)
+      servoPos = 180;
+    lastServoPos = servoPos;
+    servo.write(servoPos);
+  }
+  updateTemps();
+  drawScreen();
   //delay(200);
   //fanSpeed++;
-  if(fanSpeed > 180)
-    fanSpeed = 0;
-  if(fanSpeed < 0)
-    fanSpeed = 180;
 }
