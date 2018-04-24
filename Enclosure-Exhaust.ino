@@ -1,10 +1,10 @@
 // include the library code:
 #include <LiquidCrystal.h>
-#include <Servo.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include "rotaryEncoder.h"
 #include "Fan4Pin.h"
+#include "ServoController.h"
 
 #define ONE_WIRE_BUS 10
 
@@ -20,10 +20,10 @@ LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
 RotaryEncoder rEncoder(A1, A0, A2);
 
-Servo servo;
+ServoController servo(8, 610, 2395);
 
 void setup() {
-	servo.attach(9, 610, 2395);
+	servo.start();
 
 	/***********************
 	 * LCD Setup
@@ -74,22 +74,20 @@ void drawScreen() {
 	else if(mode == 2) {
 		lcd.print(backlightPercent);
 	}
-	lcd.print("	");
-	//if(lastTemp != temp) {
+	lcd.print("	  ");
+	if(lastTemp != temp) {
 		lastTemp = temp;
-		lcd.setCursor(6, 1);
+		lcd.setCursor(8, 1);
 		lcd.print(temp);
-	//}
+	}
 }
 
 void updateTemps() {
 	unsigned long now = millis();
 	if (now - lastSensorPollTime >= 5000) {
-		servo.detach();
 		lastSensorPollTime = now;
 		sensors.requestTemperatures();
 		temp = sensors.getTempCByIndex(0);
-		servo.attach(9, 610, 2395);
 	}
 }
 
@@ -119,8 +117,9 @@ void loop() {
 		if(servoPos < 0)
 			servoPos = 180;
 		lastServoPos = servoPos;
-		servo.write(servoPos);
+		servo.setPos(servoPos);
 	}
+	servo.update();
 	updateTemps();
 	drawScreen();
 }
