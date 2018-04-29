@@ -40,39 +40,33 @@ void setup() {
 	rEncoder.start();
 }
 
-int servoPos = 0;
-int lastServoPos = -1;
-int backlightPercent = 100;
-int lastBacklightPercent = -1;
 int mode = 0;
 int lastMode = -1;
 float temp = 0;
 float lastTemp = -1;
 unsigned long lastSensorPollTime = -1000;
+int coolingFactor = 0;
+int lastCoolingFactor = -1;
+int targetTemp = 35;
+int lastTargetTemp = -1;
 
 void drawScreen() {
 	if(mode != lastMode) {
 		lastMode = mode;
 		lcd.clear();
 		if(mode == 0) {
-			lcd.print("Set FAN");
+			lcd.print("Target Temp");
 		}
 		else if(mode == 1) {
-			lcd.print("Set Servo");
-		}
-		else if(mode == 2) {
-			lcd.print("Set Backlight");
+			lcd.print("Cooling Factor");
 		}
 	}
 	lcd.setCursor(0, 1);
 	if(mode == 0) {
-		lcd.print(fan.getSpeed());
+		lcd.print(targetTemp);
 	}
 	else if(mode == 1) {
-		lcd.print(servoPos);
-	}
-	else if(mode == 2) {
-		lcd.print(backlightPercent);
+		lcd.print(coolingFactor * 5);
 	}
 	lcd.print("	  ");
 	if(lastTemp != temp) {
@@ -94,23 +88,42 @@ void updateTemps() {
 void loop() {
 	// put your main code here, to run repeatedly:
 	RotaryEncoderState reState = rEncoder.read();
-	if(reState == RotaryEncoderState::clockwise) {
-		if(mode == 0)
-			fan.setSpeed(fan.getSpeed() + 1);
-		if(mode == 1)
-			servoPos++;
+	if(mode == 0) {
+		if(reState == RotaryEncoderState::clockwise)
+			targetTemp++;
+		else if (reState == RotaryEncoderState::anti_clockwise)
+			targetTemp--;
+		if (targetTemp > 60)
+			targetTemp = 60;
+		else if (targetTemp < 0)
+			targetTemp = 0;
 	}
-	if(reState == RotaryEncoderState::anti_clockwise) {
-		if(mode == 0)
-			fan.setSpeed(fan.getSpeed() - 1);
-		if(mode == 1)
-			servoPos--;
+	else if (mode == 1) {
+		if(reState == RotaryEncoderState::clockwise)
+			coolingFactor++;
+		else if (reState == RotaryEncoderState::anti_clockwise)
+			coolingFactor--;
+		if (coolingFactor > 20)
+			coolingFactor = 20;
+		else if (coolingFactor < 0)
+			coolingFactor = 0;
 	}
 	if(reState == RotaryEncoderState::button) {
 		mode++;
-		if(mode > 2)
+		if(mode >= 2)
 			mode = 0;
 	}
+	if(coolingFactor != lastCoolingFactor) {
+		lastCoolingFactor = coolingFactor;
+		int servoPos = map(lastCoolingFactor, 1, 20, 1, 5);
+		if(coolingFactor == 0)
+			servoPos = 0;
+		servoPos = servoPos * 36;
+		int fanSpeed = map(lastCoolingFactor, 0, 20, 0, 100);
+		servo.setPos(180 - servoPos);
+		fan.setSpeed(fanSpeed);
+	}
+	/*
 	if(servoPos != lastServoPos) {
 		if(servoPos > 180)
 			servoPos = 0;
@@ -119,6 +132,7 @@ void loop() {
 		lastServoPos = servoPos;
 		servo.setPos(servoPos);
 	}
+	*/
 	servo.update();
 	updateTemps();
 	drawScreen();

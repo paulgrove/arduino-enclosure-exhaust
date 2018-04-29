@@ -31,7 +31,7 @@ RotaryEncoderState RotaryEncoder::read() {
 	int aVal = digitalRead(_a);
 	if (aVal != _pinALast) {
 		unsigned long thisActivation = millis();
-		if(thisActivation - _lastActivation > 20) {
+		if(thisActivation - _lastActivation > 40) {
 			_lastActivation = thisActivation;
 			// knob is rotating - get direction
 			if (digitalRead(_b) != aVal) {
