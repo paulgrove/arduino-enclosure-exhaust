@@ -5,6 +5,7 @@
 #include "rotaryEncoder.h"
 #include "Fan4Pin.h"
 #include "ServoController.h"
+#include "DController.h"
 
 #define ONE_WIRE_BUS 10
 
@@ -22,7 +23,11 @@ RotaryEncoder rEncoder(A1, A0, A2);
 
 ServoController servo(8, 610, 2395);
 
+// sampleRate, tRangeLow, tRangeHigh
+DController tempController(15000, 240000, 300000);
+
 void setup() {
+	Serial.begin(9600);
 	servo.start();
 
 	/***********************
@@ -40,40 +45,36 @@ void setup() {
 	rEncoder.start();
 }
 
+bool draw = true;
 int mode = 0;
 int lastMode = -1;
 float temp = 0;
 float lastTemp = -1;
 unsigned long lastSensorPollTime = -1000;
-int coolingFactor = 0;
+int coolingFactor = 5;
 int lastCoolingFactor = -1;
 int targetTemp = 35;
 int lastTargetTemp = -1;
+int ctrlChange = 0;
 
 void drawScreen() {
-	if(mode != lastMode) {
-		lastMode = mode;
-		lcd.clear();
-		if(mode == 0) {
-			lcd.print("Target Temp");
-		}
-		else if(mode == 1) {
-			lcd.print("Cooling Factor");
-		}
-	}
-	lcd.setCursor(0, 1);
+	if(!draw)
+		return;
+	draw = false;
+	lcd.clear();
+	lcd.setCursor(0, 0);
 	if(mode == 0) {
-		lcd.print(targetTemp);
+		lcd.print("Target Temp");
 	}
 	else if(mode == 1) {
-		lcd.print(coolingFactor * 5);
+		lcd.print("Cooling Factor");
 	}
-	lcd.print("	  ");
-	if(lastTemp != temp) {
-		lastTemp = temp;
-		lcd.setCursor(8, 1);
-		lcd.print(temp);
-	}
+	lcd.setCursor(0, 1);
+	lcd.print(targetTemp);
+	lcd.setCursor(4, 1);
+	lcd.print(coolingFactor);
+	lcd.setCursor(7, 1);
+	lcd.print(temp);
 }
 
 void updateTemps() {
@@ -82,6 +83,10 @@ void updateTemps() {
 		lastSensorPollTime = now;
 		sensors.requestTemperatures();
 		temp = sensors.getTempCByIndex(0);
+		if(temp != lastTemp) {
+			lastTemp = temp;
+			draw = true;
+		}
 	}
 }
 
@@ -89,37 +94,60 @@ void loop() {
 	// put your main code here, to run repeatedly:
 	RotaryEncoderState reState = rEncoder.read();
 	if(mode == 0) {
-		if(reState == RotaryEncoderState::clockwise)
+		if(reState == RotaryEncoderState::clockwise) {
 			targetTemp++;
-		else if (reState == RotaryEncoderState::anti_clockwise)
+			draw = true;
+		}
+		else if (reState == RotaryEncoderState::anti_clockwise) {
 			targetTemp--;
+			draw = true;
+		}
 		if (targetTemp > 60)
 			targetTemp = 60;
 		else if (targetTemp < 0)
 			targetTemp = 0;
+		ctrlChange = tempController.update(temp, targetTemp);
+		coolingFactor += ctrlChange;
+		if (coolingFactor > 20)
+			coolingFactor = 20;
+		else if (coolingFactor < 0)
+			coolingFactor = 0;
 	}
 	else if (mode == 1) {
-		if(reState == RotaryEncoderState::clockwise)
+		if(reState == RotaryEncoderState::clockwise) {
 			coolingFactor++;
-		else if (reState == RotaryEncoderState::anti_clockwise)
+			draw = true;
+		}
+		else if (reState == RotaryEncoderState::anti_clockwise) {
 			coolingFactor--;
+			draw = true;
+		}
 		if (coolingFactor > 20)
 			coolingFactor = 20;
 		else if (coolingFactor < 0)
 			coolingFactor = 0;
 	}
 	if(reState == RotaryEncoderState::button) {
+		draw = true;
 		mode++;
 		if(mode >= 2)
 			mode = 0;
 	}
 	if(coolingFactor != lastCoolingFactor) {
+		draw = true;
+		Serial.print("Cooling Factor: ");
+		Serial.print(coolingFactor);
 		lastCoolingFactor = coolingFactor;
-		int servoPos = map(lastCoolingFactor, 1, 20, 1, 5);
+
+		int servoPos = map(lastCoolingFactor, 0, 10, 0, 10);
 		if(coolingFactor == 0)
 			servoPos = 0;
-		servoPos = servoPos * 36;
-		int fanSpeed = map(lastCoolingFactor, 0, 20, 0, 100);
+		if(coolingFactor >= 10)
+			servoPos = 180;
+		servoPos = servoPos * 18;
+		int fanSpeed = map(lastCoolingFactor, 10, 20, 0, 100);
+		if(fanSpeed < 0)
+			fanSpeed = 0;
 		servo.setPos(180 - servoPos);
 		fan.setSpeed(fanSpeed);
 	}
